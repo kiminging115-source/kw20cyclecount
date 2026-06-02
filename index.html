@@ -22,8 +22,8 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 
 /* ── TOPBAR ── */
 .topbar{background:#111111;height:46px;display:flex;align-items:center;padding:0 10px;gap:8px;flex-shrink:0;border-bottom:3px solid var(--blue-accent)}
-.topbar-icons{display:flex;align-items:center;gap:2px}
-.topbar-icon-btn{background:none;border:none;color:#a0b4d0;font-size:17px;cursor:pointer;padding:4px 5px;border-radius:4px;line-height:1;display:flex;align-items:center}
+.topbar-icons{display:flex;align-items:center;gap:0}
+.topbar-icon-btn{background:none;border:none;color:#a0b4d0;font-size:20px;cursor:pointer;padding:6px 10px;border-radius:6px;line-height:1;display:flex;align-items:center;min-width:44px;min-height:44px;justify-content:center}
 .topbar-icon-btn:hover{color:#fff;background:rgba(255,255,255,.1)}
 .logo{background:#e53935;color:#fff;font-weight:800;font-size:9px;padding:3px 6px;border-radius:4px;line-height:1.3;letter-spacing:.3px;flex-shrink:0}
 .topbar-title{font-size:13px;color:#e0e0e0;flex:1;font-weight:500;padding-left:4px}
@@ -44,7 +44,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .sb-btn.active{background:rgba(255,255,255,.15);color:#fff}
 .sb-btn.active .sb-label{color:#fff}
 .sb-btn:hover{background:rgba(255,255,255,.1);color:#fff}
-.main{flex:1;overflow-y:auto;background:var(--bg)}
+.main{flex:1;overflow-y:auto;overflow-x:hidden;background:var(--bg)}
 .screen{display:none}.screen.active{display:block}
 
 /* ── HOME PANELS ── */
@@ -189,7 +189,9 @@ tr:hover td{background:#f5f7fa}
 .stat-lbl{font-size:10px;color:#7b8fa8;font-weight:700;letter-spacing:.6px;margin-bottom:5px;text-transform:uppercase}
 .stat-num{font-size:26px;font-weight:800}
 .s-blue{color:var(--blue)}.s-green{color:#2e7d32}.s-red{color:#c62828}.s-yellow{color:#e65100}
-.sum-tbl-wrap{padding:0 16px 24px}
+.sum-tbl-wrap{padding:0 16px 24px;overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%}
+.sum-tbl-wrap table{min-width:700px;table-layout:fixed}
+.sum-tbl-wrap td,.sum-tbl-wrap th{white-space:nowrap}
 .sum-tbl-title{font-size:11px;font-weight:700;color:#7b8fa8;margin-bottom:8px;letter-spacing:.5px;text-transform:uppercase}
 .s-badge{padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700}
 .sb-eq{background:#e8f5e9;color:#1b5e20}.sb-sh{background:#ffebee;color:#b71c1c}.sb-ov{background:#fff8e1;color:#e65100}
@@ -210,6 +212,7 @@ tr:hover td{background:#f5f7fa}
 <div class="topbar">
   <div class="topbar-icons">
     <button class="topbar-icon-btn" onclick="toggleSidebar()" title="Menu">☰</button>
+    <div style="width:1px;height:24px;background:rgba(255,255,255,.15);margin:0 2px;flex-shrink:0"></div>
     <button class="topbar-icon-btn" id="topbarBackBtn" onclick="topbarBack()" title="Back">←</button>
     <button class="topbar-icon-btn" onclick="location.reload()" title="Refresh">↺</button>
   </div>
@@ -314,21 +317,23 @@ tr:hover td{background:#f5f7fa}
         </div>
       </div>
     </div>
-    <div class="screen" id="screen-summary">
+    <div class="screen" id="screen-summary" style="overflow-x:hidden">
       <div class="sum-stats">
         <div class="stat-box"><div class="stat-lbl">TOTAL ITEMS</div><div class="stat-num s-blue" id="sTotal">0</div></div>
         <div class="stat-box"><div class="stat-lbl">COUNTED</div><div class="stat-num s-green" id="sCounted">0</div></div>
         <div class="stat-box"><div class="stat-lbl">SHORT</div><div class="stat-num s-red" id="sShort">0</div></div>
         <div class="stat-box"><div class="stat-lbl">OVER</div><div class="stat-num s-yellow" id="sOver">0</div></div>
       </div>
-      <div class="sum-tbl-wrap">
+      <div style="padding:0 16px 24px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div class="sum-tbl-title" style="margin-bottom:0">COUNT RESULTS</div>
-          <button onclick="exportToExcel()" style="background:#217346;color:#fff;border:none;border-radius:6px;padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px"><span style="font-size:14px">📥</span> Export Excel</button>
+          <button onclick="exportToExcel()" style="background:#217346;color:#fff;border:none;border-radius:6px;padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;flex-shrink:0"><span style="font-size:14px">📥</span> Export Excel</button>
         </div>
-        <div style="background:var(--surf);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden">
-          <table><thead><tr><th>Location</th><th>Aisle</th><th>Product</th><th>Description</th><th>BOH</th><th>Count</th><th>Diff</th><th>Status</th></tr></thead>
-          <tbody id="sumBody"></tbody></table>
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%">
+          <table style="min-width:680px;border-collapse:collapse;width:100%">
+            <thead><tr><th style="white-space:nowrap">Location</th><th style="white-space:nowrap">Aisle</th><th style="white-space:nowrap">Product</th><th style="white-space:nowrap;min-width:160px">Description</th><th style="white-space:nowrap">BOH</th><th style="white-space:nowrap">Count</th><th style="white-space:nowrap">Diff</th><th style="white-space:nowrap">Status</th></tr></thead>
+            <tbody id="sumBody"></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -785,7 +790,7 @@ window.calcTotal=function(){const cq=window._caseQty||1;const pq=window._packQty
 window.submitCount=function(){const{total,diff,cases,packs,units}=calcTotal();const codeDate=document.getElementById('iCodeDate').value;const time=new Date().toTimeString().slice(0,8);const status=diff===0?'equal':diff<0?'short':'over';results[currentItem.location_id]={total,diff,cases,packs,units,codeDate,time,status};saveState();closeModal();renderList();renderAisles();if(isFCA(sel.aisle))renderFCZones(sel.aisle,true);else renderZones(true);showToast(status==='equal'?'✓ Equal – saved to cloud':status==='short'?`⚠ Short by ${Math.abs(diff)} – saved`:`↑ Over by ${diff} – saved`);};
 window.closeModal=function(){document.getElementById('modal').classList.add('hidden');currentItem=null;};
 
-function refreshSummary(){const all=inventory.filter(r=>r.product_code||r.description);const counted=all.filter(r=>results[r.location_id]);document.getElementById('sTotal').textContent=all.length;document.getElementById('sCounted').textContent=counted.length;document.getElementById('sShort').textContent=counted.filter(r=>results[r.location_id].status==='short').length;document.getElementById('sOver').textContent=counted.filter(r=>results[r.location_id].status==='over').length;const tbody=document.getElementById('sumBody');tbody.innerHTML='';counted.forEach(item=>{const res=results[item.location_id];const boh=parseFloat(item.boh)||parseFloat(item.boh_unit)||0;const tr=document.createElement('tr');const badge=res.status==='equal'?'<span class="s-badge sb-eq">Equal</span>':res.status==='short'?`<span class="s-badge sb-sh">Short(${res.diff})</span>`:`<span class="s-badge sb-ov">Over(+${res.diff})</span>`;tr.innerHTML=`<td>${item.location_id||''}</td><td>${item.aisle||''}</td><td>${item.product_code||''}</td><td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${item.description||''}</td><td>${boh}</td><td>${res.total}</td><td style="font-weight:700;color:${res.diff===0?'var(--green)':res.diff<0?'var(--red)':'var(--yellow)'}">${res.diff>=0?'+':''}${res.diff}</td><td>${badge}</td>`;tbody.appendChild(tr);});}
+function refreshSummary(){const all=inventory.filter(r=>r.product_code||r.description);const counted=all.filter(r=>results[r.location_id]);document.getElementById('sTotal').textContent=all.length;document.getElementById('sCounted').textContent=counted.length;document.getElementById('sShort').textContent=counted.filter(r=>results[r.location_id].status==='short').length;document.getElementById('sOver').textContent=counted.filter(r=>results[r.location_id].status==='over').length;const tbody=document.getElementById('sumBody');tbody.innerHTML='';counted.forEach(item=>{const res=results[item.location_id];const boh=parseFloat(item.boh)||parseFloat(item.boh_unit)||0;const tr=document.createElement('tr');const badge=res.status==='equal'?'<span class="s-badge sb-eq">Equal</span>':res.status==='short'?`<span class="s-badge sb-sh">Short(${res.diff})</span>`:`<span class="s-badge sb-ov">Over(+${res.diff})</span>`;tr.innerHTML=`<td style="white-space:nowrap">${item.location_id||''}</td><td style="white-space:nowrap">${item.aisle||''}</td><td style="white-space:nowrap">${item.product_code||''}</td><td style="min-width:160px">${item.description||''}</td><td style="white-space:nowrap">${boh}</td><td style="white-space:nowrap">${res.total}</td><td style="white-space:nowrap;font-weight:700;color:${res.diff===0?'var(--green)':res.diff<0?'var(--red)':'var(--yellow)'}">${res.diff>=0?'+':''}${res.diff}</td><td style="white-space:nowrap">${badge}</td>`;tbody.appendChild(tr);});}
 
 window.exportToExcel=function(){
   const all=inventory.filter(r=>r.product_code||r.description);
