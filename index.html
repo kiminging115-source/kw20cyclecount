@@ -635,6 +635,8 @@ async function syncFirebase(silent=false){
     lsSet('pm',{barcodeMap,at:new Date().toISOString(),n:products.length});
     setSyncStatus('ok',products.length);
     if(!silent)showToast('✓ Products synced: '+products.length+' items');
+    // Preload images in background — batch of 6 parallel fetches at a time
+    _preloadAllImages(snap.docs.map(d=>String(d.data().id||d.id||'').trim()).filter(Boolean));
   }catch(e){
     const pm=lsGet('pm');
     if(pm&&pm.barcodeMap){barcodeMap=pm.barcodeMap;setSyncStatus('ok_cache',Object.keys(barcodeMap).length);}
@@ -645,9 +647,9 @@ async function syncFirebase(silent=false){
 // Load image for a single product on-demand (from localStorage cache or Firestore)
 const _imgLoading=new Set();
 async function loadProductImage(pc){
-  if(!pc||productImageMap[pc]||_imgLoading.has(pc))return;
-  // Check localStorage first
-  try{const cached=localStorage.getItem('img_'+pc);if(cached){productImageMap[pc]=cached;return;}}catch(e){}
+  if(!pc||productImageMap[pc]!==undefined||_imgLoading.has(pc))return;
+  // Check localStorage first — instant
+  try{const cached=localStorage.getItem('img_'+pc);if(cached!==null){productImageMap[pc]=cached;return;}}catch(e){}
   // Fetch from Firestore
   if(!db)return;
   _imgLoading.add(pc);
@@ -655,15 +657,23 @@ async function loadProductImage(pc){
     const snap=await getDoc(doc(db,'products',pc));
     if(snap.exists()){
       const img=snap.data().imageUrl||snap.data().image||null;
-      if(img){
-        productImageMap[pc]=img;
-        try{localStorage.setItem('img_'+pc,img);}catch(e){}
-      } else {
-        productImageMap[pc]=''; // mark as checked, no image
-      }
+      productImageMap[pc]=img||''; // '' = confirmed no image
+      if(img){try{localStorage.setItem('img_'+pc,img);}catch(e){}}
+      else{try{localStorage.setItem('img_'+pc,'');}catch(e){}} // cache miss too
     }
-  }catch(e){}
-  _imgLoading.delete(pc);
+  }catch(e){}finally{_imgLoading.delete(pc);}
+}
+
+// Preload ALL product images in background after sync — fills cache silently
+async function _preloadAllImages(pcs){
+  const BATCH=6; // 6 parallel Firestore fetches at a time
+  const todo=pcs.filter(pc=>pc&&localStorage.getItem('img_'+pc)===null);
+  for(let i=0;i<todo.length;i+=BATCH){
+    const batch=todo.slice(i,i+BATCH);
+    await Promise.all(batch.map(pc=>loadProductImage(pc)));
+    // Small yield to not block UI
+    await new Promise(r=>setTimeout(r,50));
+  }
 }
 function buildBarcodeMap(products){
   barcodeMap={};productImageMap={};
@@ -966,7 +976,10 @@ function updateBreadcrumb(){let zLbl=null;if(sel.zone)zLbl=sel.zone==='left'?'Le
 
 function openList(){const zg=zoneGroups.find(g=>g.zoneNum===sel.zone);const zLbl=sel.zone==='left'?'Full Left':sel.zone==='right'?'Full Right':sel.zone?(zg&&zg.label?'Zone '+zg.label:'Zone '+sel.zone):null;document.getElementById('listTitle').textContent=[sel.type==='Recount'?'Recount':'Count',sel.module,sel.aisle,zLbl].filter(Boolean).join(' • ');filteredItems=inventory.filter(r=>{if(sel.aisle&&r.aisle!==sel.aisle)return false;if(sel.zone){if(isFCA(sel.aisle)){if(getFCS(r.location_id,sel.aisle)!==sel.zone)return false;}else{const g=zoneGroups.find(g=>g.zoneNum===sel.zone);if(!g)return false;if(g.test){if(!g.test(r.location_id))return false;}else{if(!g.bays.includes(getBay(r.location_id,sel.aisle)))return false;}}}// In Recount mode: only show items already counted as Short or Over
 if(sel.type==='Recount'){const res=results[r.location_id];if(!res||res.status==='equal')return false;}
-return r.product_code||r.description;});document.getElementById('scanStatus').innerHTML='';document.getElementById('barcodeInp').value='';skippedItems=new Set();renderList();updateListImg();goScreen('list');setTimeout(()=>document.getElementById('barcodeInp').focus(),200);}
+return r.product_code||r.description;});document.getElementById('scanStatus').innerHTML='';document.getElementById('barcodeInp').value='';skippedItems=new Set();renderList();updateListImg();goScreen('list');setTimeout(()=>document.getElementById('barcodeInp').focus(),200);
+  // Preload images for items in this zone right away
+  const zonePcs=[...new Set(filteredItems.map(r=>String(r.product_code||'').trim()).filter(Boolean))];
+  _preloadAllImages(zonePcs);}
 function updateListImg(){
   // Priority 1: first active (uncounted & unskipped) item
   // Priority 2: first item in list — always show something
