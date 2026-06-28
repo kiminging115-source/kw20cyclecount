@@ -585,9 +585,13 @@ async function loadAll(){
 
   // ── STEP 3: Barcode cache from localStorage (fast, used until fresh sync arrives) ──
   const pm=lsGet('pm');
-  if(pm&&pm.barcodeMap){barcodeMap=pm.barcodeMap;if(pm.productImageMap)productImageMap=pm.productImageMap;setSyncStatus('ok_cache',Object.keys(barcodeMap).length);}
+  if(pm&&pm.barcodeMap){
+    barcodeMap=pm.barcodeMap;
+    setSyncStatus('ok_cache',Object.keys(barcodeMap).length);
+    // Images loaded on-demand when each product is shown
+  }
 
-  // ── STEP 3b: Always fetch fresh barcodes from Firebase (never skip) ──
+  // ── STEP 3b: Always fetch fresh barcodes+images from Firebase (never skip) ──
   if(db){ syncFirebase(true); }
 
   // ── STEP 4: Restore the home UI to where the user was ──
@@ -620,26 +624,53 @@ async function syncFirebase(silent=false){
   try{
     const q=query(collection(db,'products'),orderBy('id'));
     const snap=await getDocs(q);
-    const products=snap.docs.map(d=>({...d.data(),_docId:d.id}));
-    // Always rebuild from fresh data — never merge with stale cache
     barcodeMap={};productImageMap={};
+    // Strip imageUrl before processing — images loaded on-demand to keep sync fast
+    const products=snap.docs.map(d=>{
+      const data=d.data();
+      delete data.imageUrl; delete data.image; // don't load large base64 during sync
+      return {...data,_docId:d.id};
+    });
     buildBarcodeMap(products);
-    // Save fresh map to localStorage
-    lsSet('pm',{barcodeMap,productImageMap,at:new Date().toISOString(),n:products.length});
+    lsSet('pm',{barcodeMap,at:new Date().toISOString(),n:products.length});
     setSyncStatus('ok',products.length);
-    if(!silent)showToast('✓ Products synced: '+products.length+' items, '+Object.keys(barcodeMap).length+' barcodes');
+    if(!silent)showToast('✓ Products synced: '+products.length+' items');
   }catch(e){
-    // Offline: fall back to cache but rebuild with updated buildBarcodeMap logic
     const pm=lsGet('pm');
-    if(pm&&pm.barcodeMap){barcodeMap=pm.barcodeMap;if(pm.productImageMap)productImageMap=pm.productImageMap;setSyncStatus('ok_cache',Object.keys(barcodeMap).length);}
+    if(pm&&pm.barcodeMap){barcodeMap=pm.barcodeMap;setSyncStatus('ok_cache',Object.keys(barcodeMap).length);}
     else setSyncStatus('err');
   }
+}
+
+// Load image for a single product on-demand (from localStorage cache or Firestore)
+const _imgLoading=new Set();
+async function loadProductImage(pc){
+  if(!pc||productImageMap[pc]||_imgLoading.has(pc))return;
+  // Check localStorage first
+  try{const cached=localStorage.getItem('img_'+pc);if(cached){productImageMap[pc]=cached;return;}}catch(e){}
+  // Fetch from Firestore
+  if(!db)return;
+  _imgLoading.add(pc);
+  try{
+    const snap=await getDoc(doc(db,'products',pc));
+    if(snap.exists()){
+      const img=snap.data().imageUrl||snap.data().image||null;
+      if(img){
+        productImageMap[pc]=img;
+        try{localStorage.setItem('img_'+pc,img);}catch(e){}
+      } else {
+        productImageMap[pc]=''; // mark as checked, no image
+      }
+    }
+  }catch(e){}
+  _imgLoading.delete(pc);
 }
 function buildBarcodeMap(products){
   barcodeMap={};productImageMap={};
   products.forEach(p=>{
     const pc=String(p.id||'').trim();if(!pc)return;
     barcodeMap[pc]={product_code:pc,type:'id'};
+    // Store image directly in productImageMap (in-memory only, not saved to localStorage here)
     const imgSrc=p.imageUrl||p.image||null;if(imgSrc)productImageMap[pc]=imgSrc;
     ['case','pack','unit'].forEach(type=>{
       const grp=p[type];if(!grp||typeof grp!=='object')return;
@@ -946,16 +977,15 @@ function updateListImg(){
   const target=active||filteredItems[0]||null;
   if(target){
     const pc=String(target.product_code||'').trim();
-    const src=productImageMap[pc]||null;
-    if(src){
-      imgEl.src=src;
-      lbl.textContent=target.description||target.product_code||'';
-      wrap.classList.add('has-img');
-    } else {
-      // No photo — show placeholder, update label via no-img text
-      imgEl.src='';
-      lbl.textContent='';
-      wrap.classList.remove('has-img');
+    const applyImg=()=>{
+      const src=productImageMap[pc]||null;
+      if(src){imgEl.src=src;lbl.textContent=target.description||pc||'';wrap.classList.add('has-img');}
+      else{imgEl.src='';lbl.textContent='';wrap.classList.remove('has-img');}
+    };
+    applyImg();
+    // If no image yet, load on-demand then update
+    if(!productImageMap[pc]){
+      loadProductImage(pc).then(()=>applyImg());
     }
   } else {
     imgEl.src='';lbl.textContent='';wrap.classList.remove('has-img');
@@ -1102,13 +1132,17 @@ function openModal(item){currentItem=item;
   document.getElementById('mLocCode').textContent=(item.product_code||'')+(item.location_id?' – '+item.location_id:'');document.getElementById('mName').textContent=item.description||'';document.getElementById('mLoc').textContent=item.location_id||'–';document.getElementById('mFmt').textContent=item.pack_format||'–';document.getElementById('mTiHi').textContent=(item.storage_ti||'?')+' × '+(item.storage_hi||'?');
   document.getElementById('lCase').textContent='CASE (×'+caseQty+')';
   document.getElementById('lPack').textContent='PACK (×'+packQty+')';const res=results[item.location_id];document.getElementById('iCase').value=res?res.cases:'';document.getElementById('iPack').value=res?res.packs:'';document.getElementById('iUnit').value=res?res.units:'';document.getElementById('iCodeDate').value=res?res.codeDate:(item.code_date||'');const boh=parseFloat(item.boh)||parseFloat(item.boh_unit)||parseFloat(item.countbook_qty)||0;document.getElementById('mBoh').textContent=boh;window._boh=boh;calcTotal();
-  // ── Show product image from Product Management app ──
+  // ── Show product image on-demand ──
   const pc=String(item.product_code||'').trim();
   const imgBanner=document.getElementById('mImgBanner');
   const imgEl=document.getElementById('mProductImg');
-  const imgSrc=productImageMap[pc]||null;
-  if(imgSrc){imgEl.src=imgSrc;imgBanner.classList.add('has-img');}
-  else{imgEl.src='';imgBanner.classList.remove('has-img');}
+  const applyModalImg=()=>{
+    const src=productImageMap[pc]||null;
+    if(src){imgEl.src=src;imgBanner.classList.add('has-img');}
+    else{imgEl.src='';imgBanner.classList.remove('has-img');}
+  };
+  applyModalImg();
+  if(!productImageMap[pc]){loadProductImage(pc).then(()=>applyModalImg());}
   document.getElementById('modal').classList.remove('hidden');setTimeout(()=>document.getElementById('iCase').focus(),60);}
 window.calcTotal=function(){const cq=window._caseQty||1;const pq=window._packQty||1;const cases=parseInt(document.getElementById('iCase').value)||0;const packs=parseInt(document.getElementById('iPack').value)||0;const units=parseInt(document.getElementById('iUnit').value)||0;const total=cases*cq+packs*pq+units;document.getElementById('mTotal').textContent=total;const boh=window._boh||0;const diff=total-boh;document.getElementById('mDiff').textContent=(diff>=0?'+':'')+diff;document.getElementById('diffBar').className='diff-bar '+(diff===0?'diff-eq':diff<0?'diff-sh':'diff-ov');return{total,diff,cases,packs,units};};
 window.submitCount=function(){const{total,diff,cases,packs,units}=calcTotal();const codeDate=document.getElementById('iCodeDate').value;const time=new Date().toTimeString().slice(0,8);const status=diff===0?'equal':diff<0?'short':'over';const user=lsGet('staffName')||'';results[currentItem.location_id]={total,diff,cases,packs,units,codeDate,time,status,user};skippedItems.delete(currentItem.location_id);saveState();closeModal();renderList();renderAisles();if(isFCA(sel.aisle))renderFCZones(sel.aisle,true);else renderZones(true);showToast(status==='equal'?'✓ Equal – saved to cloud':status==='short'?`⚠ Short by ${Math.abs(diff)} – saved`:`↑ Over by ${diff} – saved`);};
